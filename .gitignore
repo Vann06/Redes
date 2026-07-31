@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Go: binarios compilados. `go build` deja el ejecutable con el nombre del
+# modulo, y `go test -c` deja archivos .test
+/emisor/emisor
+*.test
+*.out
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*~
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Configuracion local de Claude Code (la compartida si se versiona)
+.claude/settings.local.json
+
+# NOTA: pruebas/resultados/ NO se ignora a proposito. El CSV y los PNG son
+# material del reporte y conviene que queden versionados para poder senalar
+# exactamente que datos produjeron cada grafica.
