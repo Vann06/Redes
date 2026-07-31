@@ -41,17 +41,85 @@ def calcular_crc(datos):
     return crc ^ 0xFFFFFFFF
 
 
+def _es_potencia_de_dos(valor):
+    return (
+        valor > 0
+        and (valor & (valor - 1)) == 0
+    )
+
 def hamming_encode(bits, tam_bloque):
-    """Pendiente. Contrato acordado:
+    """Codifica un string de bits utilizando código de Hamming.
 
-        hamming_encode(bits, tam_bloque) -> string de bits
-
-    Parte el mensaje en bloques de tam_bloque, agrega r bits de paridad a cada
-    uno con r el minimo tal que m + r + 1 <= 2**r, y rellena con ceros el
-    ultimo bloque si el mensaje no alcanza.
+    Esta función debe producir exactamente la misma trama que
+    HammingEncode del emisor en Go.
     """
-    raise NotImplementedError("Hamming todavia no esta implementado")
+    if not isinstance(bits, str):
+        raise ValueError(
+            "bits debe ser un string"
+        )
 
+    if any(bit not in "01" for bit in bits):
+        raise ValueError(
+            "el mensaje contiene caracteres que no son bits"
+        )
+
+    r = calcular_r(tam_bloque)
+    n = tam_bloque + r
+
+    if bits == "":
+        return ""
+
+    relleno = (
+        tam_bloque - len(bits) % tam_bloque
+    ) % tam_bloque
+
+    bits_rellenos = bits + ("0" * relleno)
+    salida = []
+
+    for inicio in range(
+        0,
+        len(bits_rellenos),
+        tam_bloque,
+    ):
+        datos = bits_rellenos[
+            inicio:inicio + tam_bloque
+        ]
+
+        bloque = ["0"] * n
+        indice_dato = 0
+
+        # Colocar los datos en posiciones que no son potencias de dos.
+        for posicion in range(1, n + 1):
+            if _es_potencia_de_dos(posicion):
+                continue
+
+            bloque[posicion - 1] = (
+                datos[indice_dato]
+            )
+            indice_dato += 1
+
+        # Calcular los bits de paridad par.
+        posicion_paridad = 1
+
+        while posicion_paridad <= n:
+            paridad = 0
+
+            for posicion in range(1, n + 1):
+                if (
+                    posicion & posicion_paridad
+                    and bloque[posicion - 1] == "1"
+                ):
+                    paridad ^= 1
+
+            bloque[posicion_paridad - 1] = str(
+                paridad
+            )
+
+            posicion_paridad <<= 1
+
+        salida.extend(bloque)
+
+    return "".join(salida)
 
 def calcular_r(m):
     """Bits de paridad que necesita un bloque de m bits de datos."""

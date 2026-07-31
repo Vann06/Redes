@@ -117,10 +117,17 @@ class TestEnlace(unittest.TestCase):
         self.assertEqual(estado, "ok")
         self.assertEqual(bits, a_bits("hola"))
 
-    def test_hamming_pendiente(self):
-        with self.assertRaises(ValueError):
-            verificar_integridad(armar_trama("hola"), "HAM", 4, 32)
+    def test_despacha_hamming(self):
+        bits, estado = verificar_integridad(
+            "0110011",
+            "HAM",
+            4,
+            4,
+        )
 
+        self.assertEqual(estado, "ok")
+        self.assertEqual(bits, "1011")
+    
     def test_rechaza_lo_desconocido(self):
         for algoritmo in ["", "crc", "CRC32", "otro"]:
             with self.subTest(algoritmo=algoritmo):

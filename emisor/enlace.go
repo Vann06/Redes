@@ -18,12 +18,7 @@ func calcularIntegridad(bits, algoritmo string, tamBloque int) (string, error) {
 		return algoritmos.CRC32Encode(bits)
 
 	case "HAM":
-		// Pendiente. Contrato acordado con el receptor:
-		//   func HammingEncode(bits string, tamBloque int) (string, error)
-		// Rellena con ceros el último bloque si el mensaje no alcanza; por eso
-		// la longitud real viaja en la cabecera.
-		return "", fmt.Errorf("Hamming todavía no está implementado")
-
+		return algoritmos.HammingEncode(bits, tamBloque)
 	default:
 		return "", fmt.Errorf("algoritmo desconocido: %q (usa CRC o HAM)", algoritmo)
 	}
