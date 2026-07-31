@@ -1,22 +1,46 @@
-# Variables
-PYTHON = python3
-CARGO = cargo
+PYTHON ?= python3
+GO ?= go
 
-.PHONY: all run-receptor run-emisor clean
+.PHONY: all
+.PHONY: run-receptor run-emisor
+.PHONY: test test-go test-receptor test-pruebas
+.PHONY: simular simular-rapido graficas
+.PHONY: clean
 
 all:
-	@echo "Usa 'make run-receptor' para iniciar el servidor bancario."
-	@echo "Usa 'make run-emisor' para iniciar el cajero automático."
+	@echo "Comandos disponibles:"
+	@echo "  make run-receptor"
+	@echo "  make run-emisor"
+	@echo "  make test"
+	@echo "  make simular"
+	@echo "  make graficas"
 
-# Levanta el servidor bancario (Receptor en Python)
 run-receptor:
-	$(PYTHON) src/receptor/receptor.py
+	$(PYTHON) receptor/main.py
 
-# Compila y ejecuta el cajero automático (Emisor en Rust)
 run-emisor:
-	cd src/emisor && $(CARGO) run
+	cd emisor && $(GO) run .
 
-# Limpia los binarios de Rust y archivos temporales de Python
+test-go:
+	cd emisor && $(GO) test ./...
+
+test-receptor:
+	cd receptor && $(PYTHON) -m unittest -v
+
+test-pruebas:
+	cd pruebas && $(PYTHON) -m unittest -v
+
+test: test-go test-receptor test-pruebas
+
+simular:
+	cd pruebas && $(PYTHON) simulacion.py
+
+simular-rapido:
+	cd pruebas && $(PYTHON) simulacion.py 200
+
+graficas:
+	cd pruebas && $(PYTHON) graficas.py
+
 clean:
-	cd src/emisor && $(CARGO) clean
-	find . -type d -name "__pycache__" -exec rm -r {} +
+	cd emisor && $(GO) clean
+	$(PYTHON) -c "import pathlib, shutil; [shutil.rmtree(ruta, ignore_errors=True) for ruta in pathlib.Path('.').rglob('__pycache__')]"

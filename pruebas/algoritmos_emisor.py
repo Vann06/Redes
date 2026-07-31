@@ -13,18 +13,36 @@ aparte, y por eso sirve para dos cosas a la vez:
 POLINOMIO_REFLEJADO = 0xEDB88320
 BITS_CRC = 32
 
-
 def crc32_encode(bits):
-    """Recibe un string de bits y devuelve ese string con 32 bits de CRC.
+    """Agrega 32 bits de CRC-32 a un string de bits."""
+    if not isinstance(bits, str):
+        raise ValueError(
+            "bits debe ser un string"
+        )
 
-    Espejo exacto de CRC32Encode del emisor en Go.
-    """
+    if any(bit not in "01" for bit in bits):
+        raise ValueError(
+            "el mensaje contiene caracteres que no son bits"
+        )
+
     if len(bits) % 8 != 0:
-        raise ValueError(f"CRC-32 necesita multiplo de 8 bits, llegaron {len(bits)}")
+        raise ValueError(
+            "CRC-32 necesita múltiplo de 8 bits, "
+            f"llegaron {len(bits)}"
+        )
 
-    octetos = bytes(int(bits[i:i + 8], 2) for i in range(0, len(bits), 8))
-    return bits + format(calcular_crc(octetos), "032b")
+    octetos = bytes(
+        int(bits[i:i + 8], 2)
+        for i in range(0, len(bits), 8)
+    )
 
+    return (
+        bits
+        + format(
+            calcular_crc(octetos),
+            "032b",
+        )
+    )
 
 def calcular_crc(datos):
     """CRC-32 reflejado: init 0xFFFFFFFF, entrada y salida reflejadas, XOR final."""
@@ -41,6 +59,24 @@ def calcular_crc(datos):
     return crc ^ 0xFFFFFFFF
 
 
+def calcular_r(m):
+    """Devuelve el mínimo r que cumple m + r + 1 <= 2**r."""
+    if (
+        not isinstance(m, int)
+        or isinstance(m, bool)
+        or m <= 0
+    ):
+        raise ValueError(
+            "tam_bloque debe ser un entero positivo"
+        )
+
+    r = 1
+
+    while (m + r + 1) > 2 ** r:
+        r += 1
+
+    return r
+
 def _es_potencia_de_dos(valor):
     return (
         valor > 0
@@ -50,12 +86,20 @@ def _es_potencia_de_dos(valor):
 def hamming_encode(bits, tam_bloque):
     """Codifica un string de bits utilizando código de Hamming.
 
-    Esta función debe producir exactamente la misma trama que
-    HammingEncode del emisor en Go.
+    Esta función produce la misma trama que HammingEncode
+    del emisor implementado en Go.
     """
+    # Las validaciones deben ejecutarse antes de cualquier división o módulo.
     if not isinstance(bits, str):
+        raise ValueError("bits debe ser un string")
+
+    if (
+        not isinstance(tam_bloque, int)
+        or isinstance(tam_bloque, bool)
+        or tam_bloque <= 0
+    ):
         raise ValueError(
-            "bits debe ser un string"
+            "tam_bloque debe ser un entero positivo"
         )
 
     if any(bit not in "01" for bit in bits):
@@ -63,11 +107,11 @@ def hamming_encode(bits, tam_bloque):
             "el mensaje contiene caracteres que no son bits"
         )
 
-    r = calcular_r(tam_bloque)
-    n = tam_bloque + r
-
     if bits == "":
         return ""
+
+    r = calcular_r(tam_bloque)
+    n = tam_bloque + r
 
     relleno = (
         tam_bloque - len(bits) % tam_bloque
@@ -88,17 +132,15 @@ def hamming_encode(bits, tam_bloque):
         bloque = ["0"] * n
         indice_dato = 0
 
-        # Colocar los datos en posiciones que no son potencias de dos.
+        # Colocar datos en posiciones que no sean potencias de dos.
         for posicion in range(1, n + 1):
             if _es_potencia_de_dos(posicion):
                 continue
 
-            bloque[posicion - 1] = (
-                datos[indice_dato]
-            )
+            bloque[posicion - 1] = datos[indice_dato]
             indice_dato += 1
 
-        # Calcular los bits de paridad par.
+        # Calcular paridad par.
         posicion_paridad = 1
 
         while posicion_paridad <= n:
@@ -111,10 +153,7 @@ def hamming_encode(bits, tam_bloque):
                 ):
                     paridad ^= 1
 
-            bloque[posicion_paridad - 1] = str(
-                paridad
-            )
-
+            bloque[posicion_paridad - 1] = str(paridad)
             posicion_paridad <<= 1
 
         salida.extend(bloque)
