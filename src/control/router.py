@@ -5,15 +5,16 @@ import threading
 import time
 from pathlib import Path
 
-from configuracion import config_nodo, direccion_router
-from dijkstra import caminos_mas_cortos, siguiente_salto
-from forwarding import Reenviador
-from protocolo import crear_trama, leer_trama
-from transporte import ServidorLineas, enviar_trama
+from comun.configuracion import config_nodo, direccion_router
+from comun.protocolo import crear_trama, leer_trama
+from comun.transporte import ServidorLineas, enviar_trama
+from control.dijkstra import caminos_mas_cortos, siguiente_salto
+from datos.forwarding import Reenviador
 
 INTERVALO_HELLO = 5
 TIEMPO_CAIDA = 15
 TTL_LSA = 8
+INTERVALO_LSA = 20
 
 
 class Router:
@@ -51,6 +52,7 @@ class Router:
         self.servidor.iniciar()
         threading.Thread(target=self._ciclo_hello, daemon=True).start()
         threading.Thread(target=self._vigilar_vecinos, daemon=True).start()
+        threading.Thread(target=self._ciclo_lsa, daemon=True).start()
         with self.candado:
             self._emitir_lsa()
         print(f"[{self.nombre}] escuchando en {self.ip}:{self.puerto}")
@@ -102,6 +104,22 @@ class Router:
                 if caidos:
                     self.vecinos_activos.difference_update(caidos)
                     self._emitir_lsa()
+
+    def _ciclo_lsa(self):
+        """Vuelve a emitir mi LSA cada cierto tiempo, no solo cuando cambian mis vecinos.
+
+        ``_inundar`` manda cada copia por una conexión TCP nueva sin
+        reintentos: si una sola falla en tránsito (algo esperable cuando
+        muchos routers arrancan y floodean casi al mismo tiempo), esa copia
+        se pierde para siempre y algunos nodos quedan con una vista
+        incompleta de mis enlaces. Este refresco periódico (igual que el
+        de OSPF real) hace que la red se autorepare sin depender de que
+        vuelva a cambiar algún vecino.
+        """
+        while True:
+            time.sleep(INTERVALO_LSA)
+            with self.candado:
+                self._emitir_lsa()
 
     def _emitir_lsa(self):
         self.seq += 1

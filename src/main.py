@@ -3,8 +3,8 @@
 import argparse
 import time
 
-from configuracion import cargar_topologia
-from router import Router
+from comun.configuracion import cargar_topologia
+from control.router import Router
 
 
 def main():

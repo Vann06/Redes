@@ -1,6 +1,6 @@
 import unittest
 
-from dijkstra import caminos_mas_cortos, siguiente_salto
+from control.dijkstra import caminos_mas_cortos, siguiente_salto
 
 
 class DijkstraTests(unittest.TestCase):
