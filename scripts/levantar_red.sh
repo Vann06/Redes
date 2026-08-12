@@ -5,10 +5,10 @@
 # mandando HELLO y LSA entre sí.
 #
 # Uso:
-#   scripts/levantar_red.sh                 # solo los 9 routers
-#   scripts/levantar_red.sh --con-banco      # routers + banco_servidor.py
-#   scripts/levantar_red.sh A B C            # solo esos routers
-#   scripts/levantar_red.sh A B C --con-banco
+#   scripts/levantar_red.sh                                   # solo los 9 routers
+#   scripts/levantar_red.sh --con-banco                        # routers + banco_servidor.py
+#   scripts/levantar_red.sh A B C                               # solo esos routers
+#   scripts/levantar_red.sh D E --con-banco --topologia config/topologia.tailscale.completo.json
 #
 # Para bajar todo: scripts/detener_red.sh
 
@@ -31,10 +31,17 @@ export PYTHONPATH=src
 mkdir -p logs runtime
 
 con_banco=0
+topologia="config/topologia.json"
 nodos=()
+esperando_valor_topologia=0
 for arg in "$@"; do
-    if [[ "$arg" == "--con-banco" ]]; then
+    if [[ "$esperando_valor_topologia" -eq 1 ]]; then
+        topologia="$arg"
+        esperando_valor_topologia=0
+    elif [[ "$arg" == "--con-banco" ]]; then
         con_banco=1
+    elif [[ "$arg" == "--topologia" ]]; then
+        esperando_valor_topologia=1
     else
         nodos+=("$arg")
     fi
@@ -43,17 +50,18 @@ if [[ ${#nodos[@]} -eq 0 ]]; then
     nodos=(A B C D E F G H I)
 fi
 
+echo "[levantar_red] usando topología: $topologia"
 : > logs/pids.txt
 
 for n in "${nodos[@]}"; do
-    "$PYTHON" src/main.py "$n" > "logs/$n.log" 2>&1 &
+    "$PYTHON" src/main.py "$n" --topologia "$topologia" > "logs/$n.log" 2>&1 &
     disown
     echo "$!" >> logs/pids.txt
     echo "[levantar_red] router $n -> PID $!"
 done
 
 if [[ "$con_banco" -eq 1 ]]; then
-    "$PYTHON" src/endpoints/banco_servidor.py > logs/banco.log 2>&1 &
+    "$PYTHON" src/endpoints/banco_servidor.py --topologia "$topologia" > logs/banco.log 2>&1 &
     disown
     echo "$!" >> logs/pids.txt
     echo "[levantar_red] banco -> PID $!"
@@ -66,6 +74,6 @@ echo "[levantar_red] listo. Tabla de ${nodos[0]}:"
 cat "runtime/${nodos[0]}_tabla_enrutamiento.csv" 2>/dev/null || echo "(todavía no existe, dale unos segundos más)"
 
 echo
-echo "Cliente ATM:   python src/endpoints/atm_cliente.py [--hamming]"
+echo "Cliente ATM:   python src/endpoints/atm_cliente.py --topologia $topologia [--hamming]"
 echo "Bajar todo:    scripts/detener_red.sh"
-echo "Ver un log:    tail -f logs/A.log"
+echo "Ver un log:    tail -f logs/${nodos[0]}.log"
