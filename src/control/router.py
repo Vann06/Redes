@@ -93,6 +93,7 @@ class Router:
             self.ultimo_hello[vecino] = time.time()
             if vecino not in self.vecinos_activos:
                 self.vecinos_activos.add(vecino)
+                print(f"[{self.nombre}] vecino {vecino} activo (link up)")
                 self._emitir_lsa()
 
     def _vigilar_vecinos(self):
@@ -103,6 +104,7 @@ class Router:
                 caidos = [v for v in self.vecinos_activos if ahora - self.ultimo_hello.get(v, 0) > TIEMPO_CAIDA]
                 if caidos:
                     self.vecinos_activos.difference_update(caidos)
+                    print(f"[{self.nombre}] vecino(s) caído(s) (link down): {', '.join(caidos)}")
                     self._emitir_lsa()
 
     def _ciclo_lsa(self):
@@ -129,6 +131,7 @@ class Router:
                "seq": self.seq, "links": enlaces, "from": self.nombre, "ttl": TTL_LSA}
         self.lsdb[self.nombre] = enlaces
         self.mayor_seq[self.nombre] = self.seq
+        print(f"[{self.nombre}] LSA propio emitido seq={self.seq} links={enlaces}")
         self._recalcular()
         self._inundar(lsa, excepto=None)
 
@@ -138,12 +141,17 @@ class Router:
             return
         with self.candado:
             if seq <= self.mayor_seq.get(origen, -1):
+                print(f"[{self.nombre}] LSA de {origen} seq={seq} ignorado (ya tengo seq={self.mayor_seq.get(origen, -1)})")
                 return
             self.mayor_seq[origen], self.lsdb[origen] = seq, dict(enlaces)
+            print(f"[{self.nombre}] LSA de {origen} seq={seq} recibido de {emisor}, links={enlaces}")
             self._recalcular()
             ttl = mensaje.get("ttl", TTL_LSA) - 1
             if ttl > 0:
                 reenvio = dict(mensaje, ttl=ttl, **{"from": self.nombre})
+                destinos = [v for v in self.vecinos_activos if v != emisor]
+                if destinos:
+                    print(f"[{self.nombre}] flooding LSA de {origen} seq={seq} hacia {', '.join(destinos)} (ttl={ttl})")
                 self._inundar(reenvio, excepto=emisor)
 
     def _inundar(self, mensaje, excepto):
@@ -154,6 +162,7 @@ class Router:
 
     def _recalcular(self):
         distancias, previos = caminos_mas_cortos(self.lsdb, self.nombre)
+        print(f"[{self.nombre}] tabla de enrutamiento recalculada: {dict(distancias)}")
         ruta = self.runtime / f"{self.nombre}_tabla_enrutamiento.csv"
         with ruta.open("w", newline="", encoding="utf-8") as archivo:
             escritor = csv.writer(archivo)
