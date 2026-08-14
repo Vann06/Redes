@@ -63,41 +63,52 @@ class Banco:
             self._responder(remitente, respuesta, usa_hamming)
 
     def _procesar(self, payload, remitente):
-        accion, data = payload.get("action"), payload.get("data", {})
+        accion, data, formato = _normalizar_payload(payload)
         sesion = self.sesiones.setdefault(remitente, {"tarjeta": None})
 
         if accion == "message":
             print(f"[BANCO] >>> MENSAJE DE {remitente}: {data.get('text', '')}")
             return None
         if accion == "login":
-            return self._login(data, sesion)
-        if accion == "withdraw":
-            return self._retirar(data, sesion)
-        if accion == "logout":
+            respuesta = self._login(data, sesion, remitente)
+        elif accion == "withdraw":
+            respuesta = self._retirar(data, sesion, remitente)
+        elif accion == "logout":
+            print(f"[BANCO] {remitente} cerró sesión (tarjeta {sesion['tarjeta']})")
             sesion["tarjeta"] = None
-            return _respuesta("logout_ok", {"message": "Hasta luego"})
-        return _respuesta("error", {"message": "Acción desconocida"})
+            respuesta = _respuesta("logout_ok", {"message": "Hasta luego"})
+        else:
+            print(f"[BANCO] {remitente} mandó una acción desconocida: {payload!r}")
+            respuesta = _respuesta("error", {"message": "Acción desconocida"})
 
-    def _login(self, data, sesion):
+        return _formatear_respuesta(accion, respuesta, formato)
+
+    def _login(self, data, sesion, remitente):
         tarjeta = data.get("card")
         cuenta = CUENTAS.get(tarjeta)
         if cuenta and cuenta["pin"] == data.get("pin"):
             sesion["tarjeta"] = tarjeta
-            return _respuesta("login_ok", {"message": "Autenticación exitosa"})
+            print(f"[BANCO] login OK: {remitente} entró con tarjeta {tarjeta}")
+            return _respuesta("login_ok", {"message": "Autenticación exitosa", "card": tarjeta, "balance": cuenta["balance"]})
+        print(f"[BANCO] login RECHAZADO: {remitente} probó tarjeta {tarjeta}")
         return _respuesta("login_denied", {"message": "Tarjeta o PIN inválidos"})
 
-    def _retirar(self, data, sesion):
+    def _retirar(self, data, sesion, remitente):
         if sesion["tarjeta"] is None:
+            print(f"[BANCO] {remitente} intentó retirar sin login")
             return _respuesta("error", {"message": "No autenticado"})
 
         cuenta = CUENTAS[sesion["tarjeta"]]
         monto = data.get("amount", 0)
         if not isinstance(monto, (int, float)) or monto <= 0:
+            print(f"[BANCO] {remitente} pidió un retiro con monto inválido: {monto!r}")
             return _respuesta("error", {"message": "Monto inválido"})
         if monto > cuenta["balance"]:
+            print(f"[BANCO] {remitente} (tarjeta {sesion['tarjeta']}) sin fondos para retirar {monto}")
             return _respuesta("error", {"message": "Fondos insuficientes"})
 
         cuenta["balance"] -= monto
+        print(f"[BANCO] {remitente} (tarjeta {sesion['tarjeta']}) retiró {monto}, saldo restante {cuenta['balance']}")
         return _respuesta("withdraw_ok", {"amount": monto, "balance": cuenta["balance"]})
 
     def _responder(self, destino, payload, usa_hamming):
@@ -117,6 +128,44 @@ class Banco:
 
 def _respuesta(accion, data):
     return {"action": accion, "data": data}
+
+
+# Traducción con el payload {"op": ...} del protocolo conjunto (otras parejas),
+# para que este BANK pueda atender a un ATM ajeno sin dejar de hablarle a
+# nuestro propio atm_cliente.py (que sigue usando {"action", "data"}).
+_ACCION_A_OP = {"login": "auth", "withdraw": "withdraw", "logout": "logout"}
+
+
+def _normalizar_payload(payload):
+    """Devuelve (accion, data, formato) sea cual sea el formato de entrada."""
+    if "op" in payload:
+        op = payload.get("op")
+        if op == "auth":
+            return "login", {"card": payload.get("user"), "pin": payload.get("pin")}, "op"
+        if op == "withdraw":
+            return "withdraw", {"amount": payload.get("amount")}, "op"
+        if op == "logout":
+            return "logout", {}, "op"
+        return None, {}, "op"
+    return payload.get("action"), payload.get("data", {}), "propio"
+
+
+def _formatear_respuesta(accion, respuesta, formato):
+    """Si la solicitud llegó en formato `op`, la respuesta se traduce de vuelta."""
+    if formato != "op" or respuesta is None:
+        return respuesta
+    op = _ACCION_A_OP.get(accion)
+    data = respuesta["data"]
+    salida = {"op": op, "status": "ok" if respuesta["action"].endswith("_ok") else "error"}
+    if "message" in data:
+        salida["msg"] = data["message"]
+    if "balance" in data:
+        salida["saldo"] = data["balance"]
+    if "amount" in data:
+        salida["amount"] = data["amount"]
+    if "card" in data:
+        salida["user"] = data["card"]
+    return salida
 
 
 def main():
