@@ -1,54 +1,109 @@
-"""Framing de tramas: JSON plano (control) y Hamming(7,4) (datos)."""
+"""Framing interoperable acordado entre las tres parejas.
+
+Plano de control:
+    HELLO y LSA viajan como JSON UTF-8 plano, sin prefijos.
+
+Plano de datos:
+    Los mensajes ATM/BANK viajan codificados con Hamming(7,4),
+    también sin prefijos adicionales.
+"""
 
 import json
 
 from comun import hamming
 
-PREFIJO_JSON = "J|"
-PREFIJO_HAMMING = "H|"
-
 
 def crear_trama(mensaje, con_hamming=False):
-    """Serializa un mensaje como trama de una línea.
-
-    Con ``con_hamming=False`` (HELLO/LSA del plano de control) antepone
-    ``J|`` al JSON. Con ``con_hamming=True`` (datos, una vez la red
-    convergió) codifica el JSON UTF-8 con Hamming(7,4) y antepone ``H|``.
     """
-    payload = json.dumps(mensaje, ensure_ascii=False, separators=(",", ":"))
+    Serializa un mensaje según el protocolo conjunto.
+
+    - HELLO / LSA: JSON plano.
+    - Datos: Hamming(7,4).
+    """
+    payload = json.dumps(
+        mensaje,
+        ensure_ascii=False,
+        separators=(",", ":")
+    )
+
     if con_hamming:
-        return PREFIJO_HAMMING + hamming.codificar_bytes(payload.encode("utf-8"))
-    return PREFIJO_JSON + payload
+        return hamming.codificar_bytes(payload.encode("utf-8"))
+
+    return payload
 
 
 def leer_trama(trama):
-    """Lee una trama de control (``J|``) o de datos (``H|``).
-
-    Devuelve ``(mensaje, usa_hamming, correcciones)``. Cualquier trama
-    corrupta o mal formada levanta ``ValueError`` para que quien la reciba
-    pueda descartarla sin detener el proceso.
     """
+    Recibe una trama.
+
+    Si comienza con '{', se interpreta como JSON plano
+    del plano de control.
+
+    De lo contrario, se intenta decodificar como Hamming(7,4)
+    para el plano de datos.
+
+    Devuelve:
+        (mensaje, usa_hamming, correcciones)
+    """
+
     trama = trama.strip()
-    if trama.startswith(PREFIJO_HAMMING):
-        bits = trama[len(PREFIJO_HAMMING) :]
+
+    if not trama:
+        raise ValueError("Trama vacía")
+
+    # ==========================================
+    # PLANO DE CONTROL: JSON PLANO
+    # ==========================================
+    if trama.startswith("{"):
         try:
-            datos, correcciones = hamming.decodificar_bits(bits)
-            mensaje = json.loads(datos.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as error:
-            raise ValueError("Trama H| corrupta o mal formada") from error
+            mensaje = json.loads(trama)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                f"JSON de control inválido: {trama[:100]!r}"
+            ) from error
+
         if not isinstance(mensaje, dict):
-            raise ValueError("Cada trama debe contener un objeto JSON")
-        return mensaje, True, correcciones
-    if not trama.startswith(PREFIJO_JSON):
-        raise ValueError("Prefijo inválido: se esperaba J| o H|")
+            raise ValueError(
+                "Cada trama debe contener un objeto JSON"
+            )
+
+        return mensaje, False, 0
+
+    # ==========================================
+    # PLANO DE DATOS: HAMMING(7,4)
+    # ==========================================
     try:
-        mensaje = json.loads(trama[len(PREFIJO_JSON) :])
-    except json.JSONDecodeError as error:
-        raise ValueError("El contenido de la trama no es JSON válido") from error
+        datos, correcciones = hamming.decodificar_bits(trama)
+
+        mensaje = json.loads(
+            datos.decode("utf-8")
+        )
+
+    except (
+        ValueError,
+        UnicodeDecodeError,
+        json.JSONDecodeError
+    ) as error:
+
+        # Esto nos permite ver qué están mandando
+        # los otros nodos si usan otro formato.
+        raise ValueError(
+            f"Trama inválida: {trama[:100]!r}"
+        ) from error
+
     if not isinstance(mensaje, dict):
-        raise ValueError("Cada trama debe contener un objeto JSON")
-    return mensaje, False, 0
+        raise ValueError(
+            "Cada trama debe contener un objeto JSON"
+        )
+
+    return mensaje, True, correcciones
 
 
 def es_control(mensaje):
-    return mensaje.get("type") in {"HELLO", "LSA"}
+    """
+    Indica si el mensaje pertenece al plano de control.
+    """
+    return mensaje.get("type") in {
+        "HELLO",
+        "LSA"
+    }
