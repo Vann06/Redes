@@ -95,6 +95,19 @@ class Router:
                 self.vecinos_activos.add(vecino)
                 print(f"[{self.nombre}] vecino {vecino} activo (link up)")
                 self._emitir_lsa()
+                self._enviar_lsdb_a(vecino)
+
+    def _enviar_lsdb_a(self, vecino):
+        
+        ip, puerto = direccion_router(self.topologia, vecino)
+        for origen, enlaces in self.lsdb.items():
+            if origen == self.nombre:
+                continue
+            lsa = {"proto": "LinkState", "type": "LSA", "origin": origen,
+                   "seq": self.mayor_seq[origen], "links": enlaces,
+                   "from": self.nombre, "ttl": TTL_LSA}
+            enviar_trama(ip, puerto, crear_trama(lsa))
+        print(f"[{self.nombre}] LSDB conocida reenviada a {vecino} recién activo")
 
     def _vigilar_vecinos(self):
         while True:
